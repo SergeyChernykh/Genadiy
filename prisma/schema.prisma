@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UploadStatus {
+  STORED
+  FAILED
+}
+
+model UploadRecord {
+  id                String       @id @default(uuid())
+  status            UploadStatus
+  telegramUserId    BigInt
+  telegramChatId    BigInt
+  telegramMessageId Int
+  telegramFileId    String
+  telegramFileUniqueId String?
+  telegramFileType  String
+  originalFileName  String?
+  mimeType          String?
+  fileSizeBytes     BigInt?
+  bucket            String?
+  objectKey         String?
+  etag              String?
+  failureMessage    String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([telegramUserId])
+  @@index([telegramChatId, telegramMessageId])
+  @@index([status])
+}
