@@ -28,7 +28,14 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     console.info(`Received ${signal}; stopping Telegram bot.`);
-    bot.stop(signal);
+    try {
+      bot.stop(signal);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message !== "Bot is not running!") {
+        throw error;
+      }
+    }
     await prisma.$disconnect();
     process.exit(0);
   };
@@ -41,8 +48,9 @@ async function main(): Promise<void> {
     void shutdown("SIGTERM");
   });
 
-  await bot.launch();
-  console.info("Telegram document ingestion bot started.");
+  await bot.launch(() => {
+    console.info("Telegram document ingestion bot started.");
+  });
 }
 
 main().catch((error: unknown) => {

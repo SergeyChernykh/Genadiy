@@ -1,5 +1,6 @@
 import { Telegraf, type Context } from "telegraf";
 import type { AppConfig } from "./config/env.js";
+import { createProxyAgent } from "./network/proxyAgent.js";
 import type { ObjectStorage, UploadRecordRepository } from "./types.js";
 import { downloadTelegramFile } from "./telegram/download.js";
 import { TelegramUploadHandler } from "./telegram/uploadHandler.js";
@@ -14,12 +15,16 @@ export function createTelegramBot(
   config: AppConfig,
   deps: TelegramBotDependencies
 ): Telegraf<Context> {
-  const bot = new Telegraf<Context>(config.botToken);
+  const telegramAgent = createProxyAgent(config.telegramProxyUrl);
+  const bot = new Telegraf<Context>(
+    config.botToken,
+    telegramAgent ? { telegram: { agent: telegramAgent } } : undefined
+  );
   const handlerDeps = {
     config,
     storage: deps.storage,
     records: deps.records,
-    downloadFile: (fileId: string) => downloadTelegramFile(bot, fileId)
+    downloadFile: (fileId: string) => downloadTelegramFile(bot, fileId, telegramAgent)
   };
 
   const handler = new TelegramUploadHandler(

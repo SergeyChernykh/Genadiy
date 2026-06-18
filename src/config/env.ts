@@ -9,6 +9,11 @@ const envSchema = z.object({
   BOT_TOKEN: z.string().trim().min(1),
   ALLOWED_TELEGRAM_USER_IDS: z.string().trim().min(1),
   DATABASE_URL: z.string().trim().min(1),
+  TELEGRAM_PROXY_URL: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
   S3_ENDPOINT: z.string().trim().min(1),
   S3_REGION: z.string().trim().min(1).default("us-east-1"),
   S3_BUCKET: z.string().trim().min(1),
@@ -22,6 +27,7 @@ export interface AppConfig {
   botToken: string;
   allowedTelegramUserIds: ReadonlySet<number>;
   databaseUrl: string;
+  telegramProxyUrl: string | undefined;
   s3Endpoint: string;
   s3Region: string;
   s3Bucket: string;
@@ -77,6 +83,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     botToken: parsed.BOT_TOKEN,
     allowedTelegramUserIds: parseAllowedTelegramUserIds(parsed.ALLOWED_TELEGRAM_USER_IDS),
     databaseUrl: parsed.DATABASE_URL,
+    telegramProxyUrl: resolveTelegramProxyUrl(env, parsed.TELEGRAM_PROXY_URL),
     s3Endpoint: parsed.S3_ENDPOINT,
     s3Region: parsed.S3_REGION,
     s3Bucket: parsed.S3_BUCKET,
@@ -85,4 +92,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     s3ForcePathStyle: parseBooleanEnv(parsed.S3_FORCE_PATH_STYLE, "S3_FORCE_PATH_STYLE"),
     maxFileBytes: parsed.MAX_FILE_BYTES
   };
+}
+
+export function resolveTelegramProxyUrl(
+  env: NodeJS.ProcessEnv,
+  explicitProxyUrl: string | undefined
+): string | undefined {
+  return [
+    explicitProxyUrl,
+    env.HTTPS_PROXY,
+    env.https_proxy,
+    env.HTTP_PROXY,
+    env.http_proxy,
+    env.ALL_PROXY,
+    env.all_proxy
+  ].find((value) => typeof value === "string" && value.trim().length > 0);
 }
