@@ -29,8 +29,9 @@ describe("document processing", () => {
     expect("skipped" in result).toBe(false);
     if ("skipped" in result) return;
     expect(result.method).toBe(ExtractionMethod.TEXT_LAYER);
-    expect(result.normalizedText).toBe("Hello PDF");
+    expect(result.rawText).toBe("Hello PDF");
     expect(result.pages[0]?.method).toBe(ExtractionMethod.TEXT_LAYER);
+    expect(result.pages[0]?.rawText).toBe("Hello PDF");
   });
 
   it("renders and OCRs scanned PDF pages", async () => {
@@ -45,7 +46,7 @@ describe("document processing", () => {
     expect("skipped" in result).toBe(false);
     if ("skipped" in result) return;
     expect(result.method).toBe(ExtractionMethod.OCR);
-    expect(result.normalizedText).toBe("Привет scan");
+    expect(result.rawText).toBe("Привет scan");
     expect(runner.run).toHaveBeenCalledWith(
       "pdftoppm",
       expect.arrayContaining(["-png"]),

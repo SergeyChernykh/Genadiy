@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ExtractionMethod } from "../../generated/prisma/enums.js";
-import { normalizeExtractedText } from "../textNormalization.js";
 import type {
   CommandRunner,
   DocumentProcessingResult,
@@ -55,12 +54,10 @@ export class DocumentProcessor {
       byteSize: fileBuffer.byteLength
     });
     const rawText = page.rawText;
-    const normalizedText = normalizeExtractedText(page.normalizedText);
 
     return {
       method: ExtractionMethod.OCR,
       rawText,
-      normalizedText,
       pageCount: 1,
       averageConfidence: page.confidence,
       pages: [page],

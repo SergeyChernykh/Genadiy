@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getProcessingKind } from "../../src/worker/fileTypes.js";
 import {
   getTextMetrics,
-  hasUsableText,
-  normalizeExtractedText
+  hasUsableText
 } from "../../src/worker/textNormalization.js";
 
 describe("worker file routing", () => {
@@ -59,16 +58,11 @@ describe("worker file routing", () => {
   });
 });
 
-describe("text normalization", () => {
-  it("normalizes conservative OCR/extraction noise", () => {
-    expect(normalizeExtractedText(" docu-\r\nment   text\n\n\n  line ")).toBe(
-      "document text\n\nline"
-    );
-  });
-
+describe("raw text metrics", () => {
   it("calculates text metrics and usability", () => {
     expect(getTextMetrics("Hello мир 123")).toEqual({ characterCount: 13, wordCount: 3 });
     expect(hasUsableText("  \n")).toBe(false);
+    expect(hasUsableText(" docu-\r\nment ")).toBe(true);
     expect(hasUsableText("abc")).toBe(true);
   });
 });

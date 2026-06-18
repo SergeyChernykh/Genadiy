@@ -117,7 +117,7 @@ export class ProcessingJobRepository {
     result: DocumentProcessingResult,
     durationMs: number
   ): Promise<void> {
-    const metrics = getTextMetrics(result.normalizedText);
+    const metrics = getTextMetrics(result.rawText);
     await this.prisma.$transaction(async (tx) => {
       const run = await tx.documentExtractionRun.create({
         data: {
@@ -140,7 +140,6 @@ export class ProcessingJobRepository {
           uploadRecordId: job.uploadRecordId,
           extractionRunId: run.id,
           rawText: result.rawText,
-          normalizedText: result.normalizedText,
           characterCount: metrics.characterCount,
           wordCount: metrics.wordCount
         }
@@ -210,7 +209,6 @@ function pageTextData(uploadRecordId: string, extractionRunId: string, page: Pag
     pageNumber: page.pageNumber,
     method: page.method,
     rawText: page.rawText,
-    normalizedText: page.normalizedText,
     confidence: page.confidence ?? null,
     metadataJson: jsonInput(page.metadata ?? {})
   };

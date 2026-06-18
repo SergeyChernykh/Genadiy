@@ -3,7 +3,7 @@ export interface TextMetrics {
   wordCount: number;
 }
 
-export function normalizeExtractedText(rawText: string): string {
+function simplifyTextForUsability(rawText: string): string {
   return rawText
     .normalize("NFKC")
     .replace(/\r\n?/g, "\n")
@@ -24,5 +24,5 @@ export function getTextMetrics(text: string): TextMetrics {
 }
 
 export function hasUsableText(text: string): boolean {
-  return getTextMetrics(normalizeExtractedText(text)).characterCount >= 3;
+  return getTextMetrics(simplifyTextForUsability(text)).characterCount >= 3;
 }

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { ExtractionMethod } from "../../generated/prisma/enums.js";
-import { hasUsableText, normalizeExtractedText } from "../textNormalization.js";
+import { hasUsableText } from "../textNormalization.js";
 import type {
   CommandRunner,
   DocumentProcessingResult,
@@ -38,7 +38,6 @@ export async function processPdfFile(
         pageNumber,
         method: ExtractionMethod.TEXT_LAYER,
         rawText: textLayer,
-        normalizedText: normalizeExtractedText(textLayer),
         metadata: { source: "pdftotext" }
       });
       continue;
@@ -126,9 +125,6 @@ function buildDocumentResult(
   }
 ): DocumentProcessingResult {
   const rawText = pages.map((page) => page.rawText).join("\n\n");
-  const normalizedText = normalizeExtractedText(
-    pages.map((page) => page.normalizedText).join("\n\n")
-  );
   const method = pages.every((page) => page.method === ExtractionMethod.TEXT_LAYER)
     ? ExtractionMethod.TEXT_LAYER
     : pages.every((page) => page.method === ExtractionMethod.OCR)
@@ -141,7 +137,6 @@ function buildDocumentResult(
   return {
     method,
     rawText,
-    normalizedText,
     pageCount: pages.length,
     averageConfidence:
       confidences.length > 0

@@ -1,6 +1,5 @@
 import { imageSize } from "image-size";
 import { ExtractionMethod } from "../../generated/prisma/enums.js";
-import { normalizeExtractedText } from "../textNormalization.js";
 import type { CommandRunner, PageExtractionResult } from "../types.js";
 
 export interface OcrOptions {
@@ -27,7 +26,6 @@ export async function ocrImageFile(
     pageNumber,
     method: ExtractionMethod.OCR,
     rawText,
-    normalizedText: normalizeExtractedText(rawText),
     confidence,
     metadata
   };

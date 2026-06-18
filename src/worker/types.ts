@@ -24,7 +24,6 @@ export interface PageExtractionResult {
   pageNumber: number;
   method: ExtractionMethod;
   rawText: string;
-  normalizedText: string;
   confidence?: number | undefined;
   metadata?: Record<string, unknown> | undefined;
 }
@@ -32,7 +31,6 @@ export interface PageExtractionResult {
 export interface DocumentProcessingResult {
   method: ExtractionMethod;
   rawText: string;
-  normalizedText: string;
   pageCount: number;
   averageConfidence?: number | undefined;
   pages: PageExtractionResult[];

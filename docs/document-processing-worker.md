@@ -1,6 +1,6 @@
 # Document Processing Worker
 
-The document processing worker extracts text from stored PDF/photo uploads and saves raw text, normalized text, page-level text, document metadata, and extraction metadata in PostgreSQL.
+The document processing worker extracts text from stored PDF/photo uploads and saves raw document text, raw page-level text, document metadata, and extraction metadata in PostgreSQL.
 
 Install local processing tools:
 

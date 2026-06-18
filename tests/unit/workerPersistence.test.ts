@@ -95,11 +95,21 @@ describe("ProcessingJobRepository", () => {
     expect(tx.documentText.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          normalizedText: "Hello world",
+          rawText: "Hello world",
           wordCount: 2
         })
       })
     );
+    const documentTextCreateCalls = tx.documentText.create.mock.calls as unknown as Array<
+      [{ data: Record<string, unknown> }]
+    >;
+    const pageTextCreateManyCalls = tx.documentPageText.createMany.mock.calls as unknown as Array<
+      [{ data: Array<Record<string, unknown>> }]
+    >;
+    const documentTextCreateArgs = documentTextCreateCalls[0]?.[0];
+    const pageTextCreateArgs = pageTextCreateManyCalls[0]?.[0];
+    expect(documentTextCreateArgs?.data).not.toHaveProperty("normalizedText");
+    expect(pageTextCreateArgs?.data[0]).not.toHaveProperty("normalizedText");
     expect(tx.documentPageText.createMany).toHaveBeenCalledOnce();
   });
 
@@ -172,14 +182,12 @@ function processingResult(): DocumentProcessingResult {
   return {
     method: ExtractionMethod.TEXT_LAYER,
     rawText: "Hello world",
-    normalizedText: "Hello world",
     pageCount: 1,
     pages: [
       {
         pageNumber: 1,
         method: ExtractionMethod.TEXT_LAYER,
         rawText: "Hello world",
-        normalizedText: "Hello world",
         metadata: { source: "pdftotext" }
       }
     ],
