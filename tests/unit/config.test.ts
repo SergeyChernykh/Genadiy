@@ -3,6 +3,7 @@ import {
   loadConfig,
   parseAllowedTelegramUserIds,
   parseBooleanEnv,
+  parseOcrLanguageCodes,
   resolveTelegramProxyUrl
 } from "../../src/config/env.js";
 
@@ -40,6 +41,43 @@ describe("configuration", () => {
     expect(config.allowedTelegramUserIds.has(123)).toBe(true);
     expect(config.s3ForcePathStyle).toBe(true);
     expect(config.maxFileBytes).toBe(1024);
+    expect(config.worker.ocrLanguages).toBe("eng+rus");
+    expect(config.worker.ocrLanguageCodes).toEqual(["eng", "rus"]);
+  });
+
+  it("loads worker processing configuration overrides", () => {
+    const config = loadConfig({
+      BOT_TOKEN: "123:test",
+      ALLOWED_TELEGRAM_USER_IDS: "123",
+      DATABASE_URL: "postgresql://telegram:telegram@localhost:5432/telegram_documents",
+      S3_ENDPOINT: "http://localhost:9000",
+      S3_BUCKET: "telegram-documents",
+      S3_ACCESS_KEY_ID: "minioadmin",
+      S3_SECRET_ACCESS_KEY: "minioadmin",
+      OCR_LANGUAGES: "eng+rus+deu",
+      WORKER_POLL_INTERVAL_MS: "1000",
+      WORKER_RETRY_DELAY_MS: "2000",
+      WORKER_MAX_ATTEMPTS: "5",
+      WORKER_COMMAND_TIMEOUT_MS: "3000",
+      WORKER_MAX_FILE_BYTES: "4000",
+      WORKER_MAX_PDF_PAGES: "6"
+    });
+
+    expect(config.worker).toMatchObject({
+      ocrLanguages: "eng+rus+deu",
+      ocrLanguageCodes: ["eng", "rus", "deu"],
+      pollIntervalMs: 1000,
+      retryDelayMs: 2000,
+      maxAttempts: 5,
+      commandTimeoutMs: 3000,
+      maxFileBytes: 4000,
+      maxPdfPages: 6
+    });
+  });
+
+  it("validates OCR language syntax", () => {
+    expect(parseOcrLanguageCodes("eng+rus")).toEqual(["eng", "rus"]);
+    expect(() => parseOcrLanguageCodes("eng+../../bad")).toThrow("OCR_LANGUAGES");
   });
 
   it("uses explicit Telegram proxy before environment proxy fallbacks", () => {

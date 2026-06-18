@@ -4,6 +4,7 @@ import { z } from "zod";
 dotenv.config();
 
 const DEFAULT_MAX_FILE_BYTES = 20 * 1024 * 1024;
+const DEFAULT_WORKER_MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 const envSchema = z.object({
   BOT_TOKEN: z.string().trim().min(1),
@@ -20,7 +21,14 @@ const envSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().trim().min(1),
   S3_SECRET_ACCESS_KEY: z.string().trim().min(1),
   S3_FORCE_PATH_STYLE: z.string().trim().default("true"),
-  MAX_FILE_BYTES: z.coerce.number().int().positive().default(DEFAULT_MAX_FILE_BYTES)
+  MAX_FILE_BYTES: z.coerce.number().int().positive().default(DEFAULT_MAX_FILE_BYTES),
+  OCR_LANGUAGES: z.string().trim().min(1).default("eng+rus"),
+  WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+  WORKER_RETRY_DELAY_MS: z.coerce.number().int().positive().default(60000),
+  WORKER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  WORKER_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
+  WORKER_MAX_FILE_BYTES: z.coerce.number().int().positive().default(DEFAULT_WORKER_MAX_FILE_BYTES),
+  WORKER_MAX_PDF_PAGES: z.coerce.number().int().positive().default(50)
 });
 
 export interface AppConfig {
@@ -35,6 +43,18 @@ export interface AppConfig {
   s3SecretAccessKey: string;
   s3ForcePathStyle: boolean;
   maxFileBytes: number;
+  worker: WorkerConfig;
+}
+
+export interface WorkerConfig {
+  ocrLanguages: string;
+  ocrLanguageCodes: readonly string[];
+  pollIntervalMs: number;
+  retryDelayMs: number;
+  maxAttempts: number;
+  commandTimeoutMs: number;
+  maxFileBytes: number;
+  maxPdfPages: number;
 }
 
 export function parseAllowedTelegramUserIds(value: string): ReadonlySet<number> {
@@ -90,7 +110,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     s3AccessKeyId: parsed.S3_ACCESS_KEY_ID,
     s3SecretAccessKey: parsed.S3_SECRET_ACCESS_KEY,
     s3ForcePathStyle: parseBooleanEnv(parsed.S3_FORCE_PATH_STYLE, "S3_FORCE_PATH_STYLE"),
-    maxFileBytes: parsed.MAX_FILE_BYTES
+    maxFileBytes: parsed.MAX_FILE_BYTES,
+    worker: {
+      ocrLanguages: normalizeOcrLanguages(parsed.OCR_LANGUAGES),
+      ocrLanguageCodes: parseOcrLanguageCodes(parsed.OCR_LANGUAGES),
+      pollIntervalMs: parsed.WORKER_POLL_INTERVAL_MS,
+      retryDelayMs: parsed.WORKER_RETRY_DELAY_MS,
+      maxAttempts: parsed.WORKER_MAX_ATTEMPTS,
+      commandTimeoutMs: parsed.WORKER_COMMAND_TIMEOUT_MS,
+      maxFileBytes: parsed.WORKER_MAX_FILE_BYTES,
+      maxPdfPages: parsed.WORKER_MAX_PDF_PAGES
+    }
   };
 }
 
@@ -107,4 +137,27 @@ export function resolveTelegramProxyUrl(
     env.ALL_PROXY,
     env.all_proxy
   ].find((value) => typeof value === "string" && value.trim().length > 0);
+}
+
+export function parseOcrLanguageCodes(value: string): readonly string[] {
+  const codes = value
+    .split("+")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  if (codes.length === 0) {
+    throw new Error("OCR_LANGUAGES must contain at least one Tesseract language code.");
+  }
+
+  for (const code of codes) {
+    if (!/^[a-z0-9_]+$/i.test(code)) {
+      throw new Error("OCR_LANGUAGES must contain Tesseract language codes separated by '+'.");
+    }
+  }
+
+  return codes;
+}
+
+export function normalizeOcrLanguages(value: string): string {
+  return parseOcrLanguageCodes(value).join("+");
 }

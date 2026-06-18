@@ -1,10 +1,17 @@
 import {
+  GetObjectCommand,
   PutObjectCommand,
   type PutObjectCommandInput,
   S3Client,
   type S3ClientConfig
 } from "@aws-sdk/client-s3";
-import type { ObjectStorage, ObjectUploadInput, StoredObject } from "../types.js";
+import type {
+  ObjectDownloader,
+  ObjectDownloadInput,
+  ObjectStorage,
+  ObjectUploadInput,
+  StoredObject
+} from "../types.js";
 
 export interface S3StorageConfig {
   endpoint: string;
@@ -28,7 +35,7 @@ export function createS3Client(config: S3StorageConfig): S3Client {
   return new S3Client(clientConfig);
 }
 
-export class S3ObjectStorage implements ObjectStorage {
+export class S3ObjectStorage implements ObjectStorage, ObjectDownloader {
   constructor(
     private readonly client: S3Client,
     private readonly bucket: string
@@ -61,6 +68,26 @@ export class S3ObjectStorage implements ObjectStorage {
     }
 
     return stored;
+  }
+
+  async downloadBuffer(input: ObjectDownloadInput): Promise<Buffer> {
+    const result = await this.client.send(
+      new GetObjectCommand({
+        Bucket: input.bucket,
+        Key: input.key
+      })
+    );
+
+    if (!result.Body) {
+      throw new Error(`Object ${input.bucket}/${input.key} has no response body.`);
+    }
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(Buffer.from(chunk));
+    }
+
+    return Buffer.concat(chunks);
   }
 }
 

@@ -29,6 +29,15 @@ export interface ObjectStorage {
   uploadBuffer(input: ObjectUploadInput): Promise<StoredObject>;
 }
 
+export interface ObjectDownloadInput {
+  bucket: string;
+  key: string;
+}
+
+export interface ObjectDownloader {
+  downloadBuffer(input: ObjectDownloadInput): Promise<Buffer>;
+}
+
 export interface FailedUploadRecordInput {
   upload: TelegramUploadMetadata;
   failureMessage: string;

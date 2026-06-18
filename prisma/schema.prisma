@@ -12,26 +12,125 @@ enum UploadStatus {
   FAILED
 }
 
+enum ProcessingJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum ExtractionMethod {
+  TEXT_LAYER
+  OCR
+  MIXED
+}
+
 model UploadRecord {
-  id                String       @id @default(uuid())
-  status            UploadStatus
-  telegramUserId    BigInt
-  telegramChatId    BigInt
-  telegramMessageId Int
-  telegramFileId    String
+  id                   String                  @id @default(uuid())
+  status               UploadStatus
+  telegramUserId       BigInt
+  telegramChatId       BigInt
+  telegramMessageId    Int
+  telegramFileId       String
   telegramFileUniqueId String?
-  telegramFileType  String
-  originalFileName  String?
-  mimeType          String?
-  fileSizeBytes     BigInt?
-  bucket            String?
-  objectKey         String?
-  etag              String?
-  failureMessage    String?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  telegramFileType     String
+  originalFileName     String?
+  mimeType             String?
+  fileSizeBytes        BigInt?
+  bucket               String?
+  objectKey            String?
+  etag                 String?
+  failureMessage       String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  processingJobs       DocumentProcessingJob[]
+  extractionRuns       DocumentExtractionRun[]
+  documentTexts        DocumentText[]
+  pageTexts            DocumentPageText[]
 
   @@index([telegramUserId])
   @@index([telegramChatId, telegramMessageId])
   @@index([status])
+}
+
+model DocumentProcessingJob {
+  id             String                  @id @default(uuid())
+  uploadRecordId String                  @unique
+  uploadRecord   UploadRecord            @relation(fields: [uploadRecordId], references: [id], onDelete: Cascade)
+  status         ProcessingJobStatus     @default(PENDING)
+  attempts       Int                     @default(0)
+  maxAttempts    Int                     @default(3)
+  claimedBy      String?
+  lockedAt       DateTime?
+  nextRunAt      DateTime                @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?
+  skipReason     String?
+  metadataJson   Json?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  extractionRuns DocumentExtractionRun[]
+
+  @@index([status, nextRunAt])
+  @@index([lockedAt])
+}
+
+model DocumentExtractionRun {
+  id                String                 @id @default(uuid())
+  uploadRecordId    String
+  uploadRecord      UploadRecord           @relation(fields: [uploadRecordId], references: [id], onDelete: Cascade)
+  processingJobId   String?
+  processingJob     DocumentProcessingJob? @relation(fields: [processingJobId], references: [id], onDelete: SetNull)
+  status            ProcessingJobStatus
+  method            ExtractionMethod?
+  ocrLanguages      String?
+  pageCount         Int?
+  durationMs        Int?
+  averageConfidence Float?
+  metadataJson      Json?
+  toolVersionsJson  Json?
+  errorMessage      String?
+  startedAt         DateTime               @default(now())
+  completedAt       DateTime?
+  documentText      DocumentText?
+  pageTexts         DocumentPageText[]
+
+  @@index([uploadRecordId])
+  @@index([status])
+}
+
+model DocumentText {
+  id              String                @id @default(uuid())
+  uploadRecordId  String
+  uploadRecord    UploadRecord          @relation(fields: [uploadRecordId], references: [id], onDelete: Cascade)
+  extractionRunId String                @unique
+  extractionRun   DocumentExtractionRun @relation(fields: [extractionRunId], references: [id], onDelete: Cascade)
+  rawText         String
+  normalizedText  String
+  characterCount  Int
+  wordCount       Int
+  createdAt       DateTime              @default(now())
+
+  @@index([uploadRecordId])
+}
+
+model DocumentPageText {
+  id              String                @id @default(uuid())
+  uploadRecordId  String
+  uploadRecord    UploadRecord          @relation(fields: [uploadRecordId], references: [id], onDelete: Cascade)
+  extractionRunId String
+  extractionRun   DocumentExtractionRun @relation(fields: [extractionRunId], references: [id], onDelete: Cascade)
+  pageNumber      Int
+  method          ExtractionMethod
+  rawText         String
+  normalizedText  String
+  confidence      Float?
+  metadataJson    Json?
+  createdAt       DateTime              @default(now())
+
+  @@unique([extractionRunId, pageNumber])
+  @@index([uploadRecordId])
+  @@index([method])
 }
