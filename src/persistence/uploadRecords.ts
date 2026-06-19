@@ -1,7 +1,9 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, UploadStatus } from "../generated/prisma/client.js";
+import { PrismaClient, ProcessingJobStatus, UploadStatus } from "../generated/prisma/client.js";
 import type {
+  DocumentTextRepository,
   FailedUploadRecordInput,
+  ProcessedDocumentText,
   StoredObject,
   TelegramUploadMetadata,
   UploadRecordRepository
@@ -12,7 +14,9 @@ export function createPrismaClient(databaseUrl: string): PrismaClient {
   return new PrismaClient({ adapter });
 }
 
-export class PrismaUploadRecordRepository implements UploadRecordRepository {
+export class PrismaUploadRecordRepository
+  implements UploadRecordRepository, DocumentTextRepository
+{
   constructor(private readonly prisma: PrismaClient) {}
 
   async createStored(upload: TelegramUploadMetadata, storedObject: StoredObject): Promise<void> {
@@ -38,6 +42,51 @@ export class PrismaUploadRecordRepository implements UploadRecordRepository {
         failureMessage: input.failureMessage
       }
     });
+  }
+
+  async findProcessedTextsByTelegramUserId(
+    telegramUserId: number
+  ): Promise<ProcessedDocumentText[]> {
+    const rows = await this.prisma.documentText.findMany({
+      where: {
+        rawText: { not: "" },
+        uploadRecord: {
+          telegramUserId: BigInt(telegramUserId),
+          status: UploadStatus.STORED
+        },
+        extractionRun: {
+          status: ProcessingJobStatus.SUCCEEDED
+        }
+      },
+      select: {
+        uploadRecordId: true,
+        rawText: true,
+        characterCount: true,
+        wordCount: true,
+        createdAt: true,
+        uploadRecord: {
+          select: {
+            telegramChatId: true,
+            telegramMessageId: true,
+            originalFileName: true,
+            mimeType: true
+          }
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+
+    return rows.map((row) => ({
+      uploadRecordId: row.uploadRecordId,
+      telegramChatId: row.uploadRecord.telegramChatId.toString(),
+      telegramMessageId: row.uploadRecord.telegramMessageId,
+      originalFileName: row.uploadRecord.originalFileName ?? undefined,
+      mimeType: row.uploadRecord.mimeType ?? undefined,
+      rawText: row.rawText,
+      characterCount: row.characterCount,
+      wordCount: row.wordCount,
+      createdAt: row.createdAt
+    }));
   }
 }
 

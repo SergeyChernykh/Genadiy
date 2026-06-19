@@ -43,6 +43,44 @@ describe("configuration", () => {
     expect(config.maxFileBytes).toBe(1024);
     expect(config.worker.ocrLanguages).toBe("eng+rus");
     expect(config.worker.ocrLanguageCodes).toEqual(["eng", "rus"]);
+    expect(config.deepSeek).toMatchObject({
+      apiKey: undefined,
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      thinkingEnabled: false,
+      timeoutMs: 60000,
+      maxContextChars: 200000,
+      maxOutputTokens: 2048
+    });
+  });
+
+  it("loads DeepSeek configuration overrides", () => {
+    const config = loadConfig({
+      BOT_TOKEN: "123:test",
+      ALLOWED_TELEGRAM_USER_IDS: "123",
+      DATABASE_URL: "postgresql://telegram:telegram@localhost:5432/telegram_documents",
+      S3_ENDPOINT: "http://localhost:9000",
+      S3_BUCKET: "telegram-documents",
+      S3_ACCESS_KEY_ID: "minioadmin",
+      S3_SECRET_ACCESS_KEY: "minioadmin",
+      DEEPSEEK_API_KEY: "deepseek-key",
+      DEEPSEEK_BASE_URL: "https://deepseek.example",
+      DEEPSEEK_MODEL: "deepseek-v4-pro",
+      DEEPSEEK_THINKING_ENABLED: "yes",
+      DEEPSEEK_TIMEOUT_MS: "12345",
+      DEEPSEEK_MAX_CONTEXT_CHARS: "54321",
+      DEEPSEEK_MAX_OUTPUT_TOKENS: "1024"
+    });
+
+    expect(config.deepSeek).toEqual({
+      apiKey: "deepseek-key",
+      baseUrl: "https://deepseek.example",
+      model: "deepseek-v4-pro",
+      thinkingEnabled: true,
+      timeoutMs: 12345,
+      maxContextChars: 54321,
+      maxOutputTokens: 1024
+    });
   });
 
   it("loads worker processing configuration overrides", () => {

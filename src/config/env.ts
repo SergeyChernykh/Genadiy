@@ -5,6 +5,17 @@ dotenv.config();
 
 const DEFAULT_MAX_FILE_BYTES = 20 * 1024 * 1024;
 const DEFAULT_WORKER_MAX_FILE_BYTES = 50 * 1024 * 1024;
+const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const DEFAULT_DEEPSEEK_TIMEOUT_MS = 60000;
+const DEFAULT_DEEPSEEK_MAX_CONTEXT_CHARS = 200000;
+const DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS = 2048;
+
+const optionalTrimmedString = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => (value && value.length > 0 ? value : undefined));
 
 const envSchema = z.object({
   BOT_TOKEN: z.string().trim().min(1),
@@ -28,7 +39,22 @@ const envSchema = z.object({
   WORKER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
   WORKER_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   WORKER_MAX_FILE_BYTES: z.coerce.number().int().positive().default(DEFAULT_WORKER_MAX_FILE_BYTES),
-  WORKER_MAX_PDF_PAGES: z.coerce.number().int().positive().default(50)
+  WORKER_MAX_PDF_PAGES: z.coerce.number().int().positive().default(50),
+  DEEPSEEK_API_KEY: optionalTrimmedString,
+  DEEPSEEK_BASE_URL: z.string().trim().url().default(DEFAULT_DEEPSEEK_BASE_URL),
+  DEEPSEEK_MODEL: z.string().trim().min(1).default(DEFAULT_DEEPSEEK_MODEL),
+  DEEPSEEK_THINKING_ENABLED: z.string().trim().default("false"),
+  DEEPSEEK_TIMEOUT_MS: z.coerce.number().int().positive().default(DEFAULT_DEEPSEEK_TIMEOUT_MS),
+  DEEPSEEK_MAX_CONTEXT_CHARS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_DEEPSEEK_MAX_CONTEXT_CHARS),
+  DEEPSEEK_MAX_OUTPUT_TOKENS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS)
 });
 
 export interface AppConfig {
@@ -44,6 +70,7 @@ export interface AppConfig {
   s3ForcePathStyle: boolean;
   maxFileBytes: number;
   worker: WorkerConfig;
+  deepSeek: DeepSeekConfig;
 }
 
 export interface WorkerConfig {
@@ -55,6 +82,16 @@ export interface WorkerConfig {
   commandTimeoutMs: number;
   maxFileBytes: number;
   maxPdfPages: number;
+}
+
+export interface DeepSeekConfig {
+  apiKey: string | undefined;
+  baseUrl: string;
+  model: string;
+  thinkingEnabled: boolean;
+  timeoutMs: number;
+  maxContextChars: number;
+  maxOutputTokens: number;
 }
 
 export function parseAllowedTelegramUserIds(value: string): ReadonlySet<number> {
@@ -120,6 +157,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       commandTimeoutMs: parsed.WORKER_COMMAND_TIMEOUT_MS,
       maxFileBytes: parsed.WORKER_MAX_FILE_BYTES,
       maxPdfPages: parsed.WORKER_MAX_PDF_PAGES
+    },
+    deepSeek: {
+      apiKey: parsed.DEEPSEEK_API_KEY,
+      baseUrl: parsed.DEEPSEEK_BASE_URL,
+      model: parsed.DEEPSEEK_MODEL,
+      thinkingEnabled: parseBooleanEnv(
+        parsed.DEEPSEEK_THINKING_ENABLED,
+        "DEEPSEEK_THINKING_ENABLED"
+      ),
+      timeoutMs: parsed.DEEPSEEK_TIMEOUT_MS,
+      maxContextChars: parsed.DEEPSEEK_MAX_CONTEXT_CHARS,
+      maxOutputTokens: parsed.DEEPSEEK_MAX_OUTPUT_TOKENS
     }
   };
 }

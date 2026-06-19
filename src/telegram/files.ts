@@ -28,6 +28,7 @@ export interface TelegramMessageLike {
   message_id: number;
   from?: TelegramUserLike;
   chat: TelegramChatLike;
+  text?: string;
   document?: TelegramDocumentLike;
   photo?: TelegramPhotoSizeLike[];
 }

@@ -1,5 +1,6 @@
 import { createTelegramBot } from "./bot.js";
 import { loadConfig } from "./config/env.js";
+import { DeepSeekClient, requireDeepSeekConfig } from "./deepseek/client.js";
 import {
   createPrismaClient,
   PrismaUploadRecordRepository
@@ -19,10 +20,14 @@ async function main(): Promise<void> {
     }),
     config.s3Bucket
   );
+  const records = new PrismaUploadRecordRepository(prisma);
+  const deepSeek = new DeepSeekClient(requireDeepSeekConfig(config.deepSeek));
 
   const bot = createTelegramBot(config, {
     storage,
-    records: new PrismaUploadRecordRepository(prisma),
+    records,
+    documents: records,
+    deepSeek,
     logger: console
   });
 

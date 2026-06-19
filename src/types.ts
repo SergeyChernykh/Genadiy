@@ -50,3 +50,35 @@ export interface UploadRecordRepository {
   createStored(upload: TelegramUploadMetadata, storedObject: StoredObject): Promise<void>;
   createFailed(input: FailedUploadRecordInput): Promise<void>;
 }
+
+export interface ProcessedDocumentText {
+  uploadRecordId: string;
+  telegramChatId: string;
+  telegramMessageId: number;
+  originalFileName?: string | undefined;
+  mimeType?: string | undefined;
+  rawText: string;
+  characterCount: number;
+  wordCount: number;
+  createdAt: Date;
+}
+
+export interface DocumentTextRepository {
+  findProcessedTextsByTelegramUserId(telegramUserId: number): Promise<ProcessedDocumentText[]>;
+}
+
+export type DeepSeekChatRole = "system" | "user" | "assistant";
+
+export interface DeepSeekChatMessage {
+  role: DeepSeekChatRole;
+  content: string;
+}
+
+export interface DeepSeekChatCompletionInput {
+  messages: readonly DeepSeekChatMessage[];
+  userId: string;
+}
+
+export interface DeepSeekChatClient {
+  createChatCompletion(input: DeepSeekChatCompletionInput): Promise<string>;
+}
