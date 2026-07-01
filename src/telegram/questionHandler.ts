@@ -1,18 +1,26 @@
 import {
-  DocumentCorpusTooLargeError,
   EmptyQuestionError,
+  NoRelevantDocumentContextError,
   NoProcessedDocumentTextError,
   type DocumentQuestionAnsweringService
 } from "../questionAnswering/documentQuestionAnswering.js";
+import type { AnswerSourceDocument, ObjectDownloader } from "../types.js";
 
 const TELEGRAM_REPLY_CHUNK_SIZE = 3900;
 
 export interface TelegramQuestionContextLike {
   reply(text: string): Promise<unknown>;
+  replyWithDocument?(
+    document: { source: Buffer; filename?: string | undefined },
+    extra?: { caption?: string | undefined }
+  ): Promise<unknown>;
 }
 
 export interface TelegramQuestionHandlerDependencies {
   service: DocumentQuestionAnsweringService;
+  sourceDownloader?: ObjectDownloader | undefined;
+  maxSourceDocuments?: number | undefined;
+  sourceDownloadMaxBytes?: number | undefined;
   logger?: Pick<Console, "error"> | undefined;
 }
 
@@ -34,8 +42,54 @@ export class TelegramQuestionHandler {
         question
       });
       await replyInChunks(ctx, result.answer);
+      await this.sendSources(ctx, result.sources);
     } catch (error) {
       await this.replyForError(ctx, telegramUserId, error);
+    }
+  }
+
+  private async sendSources(
+    ctx: TelegramQuestionContextLike,
+    sources: readonly AnswerSourceDocument[]
+  ): Promise<void> {
+    if (!this.deps.sourceDownloader || !ctx.replyWithDocument) {
+      return;
+    }
+
+    const maxSourceDocuments = this.deps.maxSourceDocuments ?? 0;
+    if (maxSourceDocuments <= 0) {
+      return;
+    }
+
+    for (const source of sources.slice(0, maxSourceDocuments)) {
+      try {
+        const file = await this.deps.sourceDownloader.downloadBuffer({
+          bucket: source.bucket,
+          key: source.objectKey
+        });
+
+        const maxBytes = this.deps.sourceDownloadMaxBytes;
+        if (typeof maxBytes === "number" && file.byteLength > maxBytes) {
+          this.logger.error(
+            `Skipped source document ${source.uploadRecordId}; size ${file.byteLength} exceeds ${maxBytes}.`
+          );
+          continue;
+        }
+
+        await ctx.replyWithDocument(
+          {
+            source: file,
+            filename: source.originalFileName ?? `source-${source.telegramMessageId}`
+          },
+          {
+            caption: `Source: ${source.originalFileName ?? source.telegramMessageId}`
+          }
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to send source document ${source.uploadRecordId}: ${errorToMessage(error)}`
+        );
+      }
     }
   }
 
@@ -51,14 +105,14 @@ export class TelegramQuestionHandler {
 
     if (error instanceof NoProcessedDocumentTextError) {
       await ctx.reply(
-        "I do not have processed document text for you yet. Upload a document or photo and run the worker first."
+        "I do not have indexed document context yet. Upload documents and keep the worker running until RAG indexing finishes."
       );
       return;
     }
 
-    if (error instanceof DocumentCorpusTooLargeError) {
+    if (error instanceof NoRelevantDocumentContextError) {
       await ctx.reply(
-        `Your processed documents are too large for the current all-documents question mode (${error.actualCharacters}/${error.maxCharacters} characters). Increase DEEPSEEK_MAX_CONTEXT_CHARS or reduce the corpus.`
+        "I could not find relevant document context for this question."
       );
       return;
     }

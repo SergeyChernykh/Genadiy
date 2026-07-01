@@ -10,6 +10,7 @@ import type { ClaimedProcessingJob } from "./types.js";
 
 export interface DocumentWorkerDependencies {
   repository: ProcessingJobRepository;
+  ragIndexer?: { runOnce(workerId: string): Promise<boolean> } | undefined;
   downloader: ObjectDownloader;
   processor: DocumentProcessor;
   config: WorkerConfig;
@@ -35,7 +36,7 @@ export class DocumentWorker {
     await this.deps.repository.ensurePendingJobs();
     const job = await this.deps.repository.claimNextJob(this.workerId);
     if (!job) {
-      return false;
+      return this.deps.ragIndexer ? this.deps.ragIndexer.runOnce(this.workerId) : false;
     }
 
     await this.processClaimedJob(job);

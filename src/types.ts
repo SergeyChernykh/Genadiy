@@ -82,3 +82,46 @@ export interface DeepSeekChatCompletionInput {
 export interface DeepSeekChatClient {
   createChatCompletion(input: DeepSeekChatCompletionInput): Promise<string>;
 }
+
+export interface EmbeddingInput {
+  input: readonly string[];
+}
+
+export interface EmbeddingResult {
+  embeddings: readonly number[][];
+  model: string;
+  dimensions: number;
+}
+
+export interface EmbeddingClient {
+  createEmbeddings(input: EmbeddingInput): Promise<EmbeddingResult>;
+}
+
+export type RagContentBlockKind = "TEXT" | "TABLE";
+
+export interface RetrievedDocumentChunk {
+  chunkId: string;
+  uploadRecordId: string;
+  bucket: string;
+  objectKey: string;
+  originalFileName?: string | undefined;
+  mimeType?: string | undefined;
+  telegramChatId: string;
+  telegramMessageId: number;
+  pageNumber?: number | undefined;
+  blockType: RagContentBlockKind;
+  text: string;
+  similarity: number;
+  exactMatchScore: number;
+  score: number;
+}
+
+export interface AnswerSourceDocument {
+  uploadRecordId: string;
+  bucket: string;
+  objectKey: string;
+  originalFileName?: string | undefined;
+  mimeType?: string | undefined;
+  telegramChatId: string;
+  telegramMessageId: number;
+}

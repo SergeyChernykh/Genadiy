@@ -26,6 +26,11 @@ enum ExtractionMethod {
   MIXED
 }
 
+enum RagContentBlockType {
+  TEXT
+  TABLE
+}
+
 model UploadRecord {
   id                   String                  @id @default(uuid())
   status               UploadStatus
@@ -48,6 +53,9 @@ model UploadRecord {
   extractionRuns       DocumentExtractionRun[]
   documentTexts        DocumentText[]
   pageTexts            DocumentPageText[]
+  ragIndexJobs         DocumentRagIndexJob[]
+  ragContentBlocks     DocumentContentBlock[]
+  ragChunks            DocumentChunk[]
 
   @@index([telegramUserId])
   @@index([telegramChatId, telegramMessageId])
@@ -111,6 +119,8 @@ model DocumentText {
   characterCount  Int
   wordCount       Int
   createdAt       DateTime              @default(now())
+  ragIndexJobs    DocumentRagIndexJob[]
+  contentBlocks   DocumentContentBlock[]
 
   @@index([uploadRecordId])
 }
@@ -127,8 +137,97 @@ model DocumentPageText {
   confidence      Float?
   metadataJson    Json?
   createdAt       DateTime              @default(now())
+  contentBlocks   DocumentContentBlock[]
 
   @@unique([extractionRunId, pageNumber])
   @@index([uploadRecordId])
   @@index([method])
+}
+
+model DocumentRagIndexJob {
+  id             String              @id @default(uuid())
+  uploadRecordId String
+  uploadRecord   UploadRecord        @relation(fields: [uploadRecordId], references: [id], onDelete: Cascade)
+  documentTextId String
+  documentText   DocumentText        @relation(fields: [documentTextId], references: [id], onDelete: Cascade)
+  status         ProcessingJobStatus @default(PENDING)
+  indexVersion   String
+  attempts       Int                 @default(0)
+  maxAttempts    Int                 @default(3)
+  claimedBy      String?
+  lockedAt       DateTime?
+  nextRunAt      DateTime            @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?
+  metadataJson   Json?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([documentTextId, indexVersion])
+  @@index([status, nextRunAt])
+  @@index([uploadRecordId])
+  @@index([indexVersion])
+}
+
+model DocumentContentBlock {
+  id             String              @id @default(uuid())
+  uploadRecordId String
+  uploadRecord   UploadRecord        @relation(fields: [uploadRecordId], references: [id], onDelete: Cascade)
+  documentTextId String
+  documentText   DocumentText        @relation(fields: [documentTextId], references: [id], onDelete: Cascade)
+  pageTextId     String?
+  pageText       DocumentPageText?   @relation(fields: [pageTextId], references: [id], onDelete: SetNull)
+  indexVersion   String
+  blockType      RagContentBlockType
+  blockIndex     Int
+  pageNumber     Int?
+  rawText        String
+  aiText         String
+  contentHash    String
+  characterCount Int
+  wordCount      Int
+  metadataJson   Json?
+  createdAt      DateTime            @default(now())
+  chunks         DocumentChunk[]
+
+  @@unique([documentTextId, indexVersion, blockIndex])
+  @@index([uploadRecordId])
+  @@index([pageTextId])
+  @@index([blockType])
+  @@index([contentHash])
+}
+
+model DocumentChunk {
+  id                String                 @id @default(uuid())
+  uploadRecordId    String
+  uploadRecord      UploadRecord           @relation(fields: [uploadRecordId], references: [id], onDelete: Cascade)
+  contentBlockId    String
+  contentBlock      DocumentContentBlock   @relation(fields: [contentBlockId], references: [id], onDelete: Cascade)
+  indexVersion      String
+  chunkIndex        Int
+  textForEmbedding  String
+  contentHash       String
+  characterCount    Int
+  metadataJson      Json?
+  createdAt         DateTime               @default(now())
+  embedding         DocumentChunkEmbedding?
+
+  @@unique([contentBlockId, chunkIndex])
+  @@index([uploadRecordId])
+  @@index([indexVersion])
+  @@index([contentHash])
+}
+
+model DocumentChunkEmbedding {
+  id             String        @id @default(uuid())
+  chunkId        String        @unique
+  chunk          DocumentChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  embeddingModel String
+  dimensions     Int
+  embedding      Unsupported("vector")
+  createdAt      DateTime      @default(now())
+
+  @@index([embeddingModel])
+  @@index([dimensions])
 }

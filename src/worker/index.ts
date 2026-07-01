@@ -1,5 +1,11 @@
 import { loadConfig } from "../config/env.js";
 import {
+  OpenAiEmbeddingClient,
+  requireOpenAiEmbeddingConfig
+} from "../openai/embeddings.js";
+import { RagIndexer } from "../rag/indexer.js";
+import { RagIndexRepository } from "../rag/persistence.js";
+import {
   createPrismaClient,
   PrismaUploadRecordRepository
 } from "../persistence/uploadRecords.js";
@@ -30,6 +36,25 @@ async function main(): Promise<void> {
     maxAttempts: config.worker.maxAttempts,
     retryDelayMs: config.worker.retryDelayMs
   });
+  const ragRepository = new RagIndexRepository(prisma, {
+    indexVersion: config.rag.indexVersion,
+    maxAttempts: config.worker.maxAttempts,
+    retryDelayMs: config.worker.retryDelayMs
+  });
+  const embeddings = new OpenAiEmbeddingClient(
+    requireOpenAiEmbeddingConfig(config.openAi, config.openAi.documentPrefix)
+  );
+  const ragIndexer = new RagIndexer({
+    repository: ragRepository,
+    embeddings,
+    options: {
+      indexVersion: config.rag.indexVersion,
+      embeddingProvider: config.openAi.provider,
+      maxChars: config.rag.chunkMaxChars,
+      overlapChars: config.rag.chunkOverlapChars
+    },
+    logger: console
+  });
   const processor = new DocumentProcessor(commandRunner, {
     languages: config.worker.ocrLanguages,
     timeoutMs: config.worker.commandTimeoutMs,
@@ -39,6 +64,7 @@ async function main(): Promise<void> {
   });
   const worker = new DocumentWorker({
     repository,
+    ragIndexer,
     downloader: storage,
     processor,
     config: config.worker,

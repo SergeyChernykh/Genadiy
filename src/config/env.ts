@@ -10,12 +10,36 @@ const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 const DEFAULT_DEEPSEEK_TIMEOUT_MS = 60000;
 const DEFAULT_DEEPSEEK_MAX_CONTEXT_CHARS = 200000;
 const DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS = 2048;
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-small";
+const DEFAULT_OPENAI_EMBEDDING_DIMENSIONS = 1536;
+const DEFAULT_OPENAI_EMBEDDING_TIMEOUT_MS = 60000;
+const DEFAULT_OPENAI_EMBEDDING_BATCH_SIZE = 32;
+const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1";
+const DEFAULT_OLLAMA_EMBEDDING_MODEL = "qwen3-embedding:0.6b";
+const DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS = 1024;
+const DEFAULT_OLLAMA_EMBEDDING_BATCH_SIZE = 8;
+const DEFAULT_RAG_INDEX_VERSION = "rag-v1";
+const DEFAULT_RAG_CHUNK_MAX_CHARS = 1800;
+const DEFAULT_RAG_CHUNK_OVERLAP_CHARS = 200;
+const DEFAULT_RAG_RETRIEVAL_LIMIT = 8;
+const DEFAULT_RAG_RETRIEVAL_CANDIDATE_LIMIT = 32;
+const DEFAULT_RAG_MIN_SIMILARITY = 0;
+const DEFAULT_RAG_EXACT_MATCH_BOOST = 0.08;
+const DEFAULT_RAG_MAX_CONTEXT_CHARS = 12000;
+const DEFAULT_RAG_MAX_SOURCE_DOCUMENTS = 3;
+const DEFAULT_RAG_SOURCE_DOWNLOAD_MAX_BYTES = 20 * 1024 * 1024;
 
 const optionalTrimmedString = z
   .string()
   .trim()
   .optional()
   .transform((value) => (value && value.length > 0 ? value : undefined));
+
+const embeddingProviderSchema = z.preprocess(
+  (value) => (typeof value === "string" ? value.trim().toLowerCase() : value),
+  z.enum(["openai", "ollama"])
+);
 
 const envSchema = z.object({
   BOT_TOKEN: z.string().trim().min(1),
@@ -54,7 +78,55 @@ const envSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS)
+    .default(DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS),
+  EMBEDDING_PROVIDER: embeddingProviderSchema.default("openai"),
+  EMBEDDING_DOCUMENT_PREFIX: z.string().optional().default(""),
+  EMBEDDING_QUERY_PREFIX: z.string().optional().default(""),
+  OPENAI_API_KEY: optionalTrimmedString,
+  OPENAI_BASE_URL: z.string().trim().url().default(DEFAULT_OPENAI_BASE_URL),
+  OPENAI_EMBEDDING_MODEL: z.string().trim().min(1).default(DEFAULT_OPENAI_EMBEDDING_MODEL),
+  OPENAI_EMBEDDING_DIMENSIONS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_OPENAI_EMBEDDING_DIMENSIONS),
+  OPENAI_EMBEDDING_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_OPENAI_EMBEDDING_TIMEOUT_MS),
+  OPENAI_EMBEDDING_BATCH_SIZE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(2048)
+    .default(DEFAULT_OPENAI_EMBEDDING_BATCH_SIZE),
+  RAG_INDEX_VERSION: z.string().trim().min(1).default(DEFAULT_RAG_INDEX_VERSION),
+  RAG_CHUNK_MAX_CHARS: z.coerce.number().int().positive().default(DEFAULT_RAG_CHUNK_MAX_CHARS),
+  RAG_CHUNK_OVERLAP_CHARS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(DEFAULT_RAG_CHUNK_OVERLAP_CHARS),
+  RAG_RETRIEVAL_LIMIT: z.coerce.number().int().positive().default(DEFAULT_RAG_RETRIEVAL_LIMIT),
+  RAG_RETRIEVAL_CANDIDATE_LIMIT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_RAG_RETRIEVAL_CANDIDATE_LIMIT),
+  RAG_MIN_SIMILARITY: z.coerce.number().min(-1).max(1).default(DEFAULT_RAG_MIN_SIMILARITY),
+  RAG_EXACT_MATCH_BOOST: z.coerce.number().nonnegative().default(DEFAULT_RAG_EXACT_MATCH_BOOST),
+  RAG_MAX_CONTEXT_CHARS: z.coerce.number().int().positive().default(DEFAULT_RAG_MAX_CONTEXT_CHARS),
+  RAG_MAX_SOURCE_DOCUMENTS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(DEFAULT_RAG_MAX_SOURCE_DOCUMENTS),
+  RAG_SOURCE_DOWNLOAD_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_RAG_SOURCE_DOWNLOAD_MAX_BYTES)
 });
 
 export interface AppConfig {
@@ -71,6 +143,8 @@ export interface AppConfig {
   maxFileBytes: number;
   worker: WorkerConfig;
   deepSeek: DeepSeekConfig;
+  openAi: OpenAiConfig;
+  rag: RagConfig;
 }
 
 export interface WorkerConfig {
@@ -92,6 +166,33 @@ export interface DeepSeekConfig {
   timeoutMs: number;
   maxContextChars: number;
   maxOutputTokens: number;
+}
+
+export type EmbeddingProvider = "openai" | "ollama";
+
+export interface OpenAiConfig {
+  provider: EmbeddingProvider;
+  apiKey: string | undefined;
+  baseUrl: string;
+  embeddingModel: string;
+  embeddingDimensions: number;
+  embeddingTimeoutMs: number;
+  embeddingBatchSize: number;
+  documentPrefix: string;
+  queryPrefix: string;
+}
+
+export interface RagConfig {
+  indexVersion: string;
+  chunkMaxChars: number;
+  chunkOverlapChars: number;
+  retrievalLimit: number;
+  retrievalCandidateLimit: number;
+  minSimilarity: number;
+  exactMatchBoost: number;
+  maxContextChars: number;
+  maxSourceDocuments: number;
+  sourceDownloadMaxBytes: number;
 }
 
 export function parseAllowedTelegramUserIds(value: string): ReadonlySet<number> {
@@ -135,6 +236,7 @@ export function parseBooleanEnv(value: string, variableName: string): boolean {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse(env);
+  const embeddingProvider = parsed.EMBEDDING_PROVIDER;
 
   return {
     botToken: parsed.BOT_TOKEN,
@@ -169,7 +271,60 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: parsed.DEEPSEEK_TIMEOUT_MS,
       maxContextChars: parsed.DEEPSEEK_MAX_CONTEXT_CHARS,
       maxOutputTokens: parsed.DEEPSEEK_MAX_OUTPUT_TOKENS
-    }
+    },
+    openAi: {
+      provider: embeddingProvider,
+      apiKey:
+        parsed.OPENAI_API_KEY ??
+        (embeddingProvider === "ollama" ? "ollama" : undefined),
+      baseUrl:
+        embeddingProvider === "ollama" && !hasEnvValue(env, "OPENAI_BASE_URL")
+          ? DEFAULT_OLLAMA_BASE_URL
+          : parsed.OPENAI_BASE_URL,
+      embeddingModel:
+        embeddingProvider === "ollama" && !hasEnvValue(env, "OPENAI_EMBEDDING_MODEL")
+          ? DEFAULT_OLLAMA_EMBEDDING_MODEL
+          : parsed.OPENAI_EMBEDDING_MODEL,
+      embeddingDimensions:
+        embeddingProvider === "ollama" && !hasEnvValue(env, "OPENAI_EMBEDDING_DIMENSIONS")
+          ? DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS
+          : parsed.OPENAI_EMBEDDING_DIMENSIONS,
+      embeddingTimeoutMs: parsed.OPENAI_EMBEDDING_TIMEOUT_MS,
+      embeddingBatchSize:
+        embeddingProvider === "ollama" && !hasEnvValue(env, "OPENAI_EMBEDDING_BATCH_SIZE")
+          ? DEFAULT_OLLAMA_EMBEDDING_BATCH_SIZE
+          : parsed.OPENAI_EMBEDDING_BATCH_SIZE,
+      documentPrefix: parsed.EMBEDDING_DOCUMENT_PREFIX,
+      queryPrefix: parsed.EMBEDDING_QUERY_PREFIX
+    },
+    rag: normalizeRagConfig({
+      indexVersion: parsed.RAG_INDEX_VERSION,
+      chunkMaxChars: parsed.RAG_CHUNK_MAX_CHARS,
+      chunkOverlapChars: parsed.RAG_CHUNK_OVERLAP_CHARS,
+      retrievalLimit: parsed.RAG_RETRIEVAL_LIMIT,
+      retrievalCandidateLimit: parsed.RAG_RETRIEVAL_CANDIDATE_LIMIT,
+      minSimilarity: parsed.RAG_MIN_SIMILARITY,
+      exactMatchBoost: parsed.RAG_EXACT_MATCH_BOOST,
+      maxContextChars: parsed.RAG_MAX_CONTEXT_CHARS,
+      maxSourceDocuments: parsed.RAG_MAX_SOURCE_DOCUMENTS,
+      sourceDownloadMaxBytes: parsed.RAG_SOURCE_DOWNLOAD_MAX_BYTES
+    })
+  };
+}
+
+function hasEnvValue(env: NodeJS.ProcessEnv, key: string): boolean {
+  const value = env[key];
+  return typeof value === "string" && value.length > 0;
+}
+
+export function normalizeRagConfig(config: RagConfig): RagConfig {
+  if (config.chunkOverlapChars >= config.chunkMaxChars) {
+    throw new Error("RAG_CHUNK_OVERLAP_CHARS must be smaller than RAG_CHUNK_MAX_CHARS.");
+  }
+
+  return {
+    ...config,
+    retrievalCandidateLimit: Math.max(config.retrievalCandidateLimit, config.retrievalLimit)
   };
 }
 

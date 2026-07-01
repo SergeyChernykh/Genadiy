@@ -1,17 +1,18 @@
 import { createHash } from "node:crypto";
+import type { RagRetriever } from "../rag/retrieval.js";
 import type {
+  AnswerSourceDocument,
   DeepSeekChatClient,
   DeepSeekChatMessage,
-  DocumentTextRepository,
-  ProcessedDocumentText
+  RetrievedDocumentChunk
 } from "../types.js";
 
 const SYSTEM_PROMPT = [
   "You are Genadiy, a Telegram assistant that answers questions using uploaded documents.",
-  "Answer only from the document text provided in the user message.",
+  "Answer only from the retrieved document context provided in the user message.",
   "If the documents do not contain enough information, say that the answer is not present in the uploaded documents.",
   "Do not invent facts. Keep the answer concise.",
-  "When possible, mention the source filename or Telegram message ID used for the answer."
+  "When possible, mention the source filename, page, or Telegram message ID used for the answer."
 ].join(" ");
 
 export interface DocumentQuestionAnsweringOptions {
@@ -19,7 +20,7 @@ export interface DocumentQuestionAnsweringOptions {
 }
 
 export interface DocumentQuestionAnsweringDependencies {
-  documents: DocumentTextRepository;
+  retriever: RagRetriever;
   deepSeek: DeepSeekChatClient;
   options: DocumentQuestionAnsweringOptions;
 }
@@ -33,11 +34,12 @@ export interface AnswerDocumentQuestionResult {
   answer: string;
   sourceCount: number;
   contextCharacters: number;
+  sources: readonly AnswerSourceDocument[];
 }
 
 export interface BuildDocumentQuestionPromptInput {
   question: string;
-  documents: readonly ProcessedDocumentText[];
+  chunks: readonly RetrievedDocumentChunk[];
   maxContextChars: number;
 }
 
@@ -56,20 +58,15 @@ export class EmptyQuestionError extends Error {
 
 export class NoProcessedDocumentTextError extends Error {
   constructor() {
-    super("No processed document text is available.");
+    super("No indexed document context is available.");
     this.name = "NoProcessedDocumentTextError";
   }
 }
 
-export class DocumentCorpusTooLargeError extends Error {
-  constructor(
-    readonly actualCharacters: number,
-    readonly maxCharacters: number
-  ) {
-    super(
-      `Processed document text is too large for v1 question answering (${actualCharacters}/${maxCharacters} characters).`
-    );
-    this.name = "DocumentCorpusTooLargeError";
+export class NoRelevantDocumentContextError extends Error {
+  constructor() {
+    super("No relevant document context was found.");
+    this.name = "NoRelevantDocumentContextError";
   }
 }
 
@@ -79,12 +76,18 @@ export class DocumentQuestionAnsweringService {
   async answerQuestion(
     input: AnswerDocumentQuestionInput
   ): Promise<AnswerDocumentQuestionResult> {
-    const documents = await this.deps.documents.findProcessedTextsByTelegramUserId(
-      input.telegramUserId
-    );
+    const retrieved = await this.deps.retriever.retrieve(input.question);
+    if (retrieved.indexedChunkCount === 0) {
+      throw new NoProcessedDocumentTextError();
+    }
+
+    if (retrieved.chunks.length === 0) {
+      throw new NoRelevantDocumentContextError();
+    }
+
     const prompt = buildDocumentQuestionPrompt({
       question: input.question,
-      documents,
+      chunks: retrieved.chunks,
       maxContextChars: this.deps.options.maxContextChars
     });
     const answer = await this.deps.deepSeek.createChatCompletion({
@@ -95,7 +98,8 @@ export class DocumentQuestionAnsweringService {
     return {
       answer,
       sourceCount: prompt.sourceCount,
-      contextCharacters: prompt.contextCharacters
+      contextCharacters: prompt.contextCharacters,
+      sources: retrieved.sources
     };
   }
 }
@@ -108,18 +112,15 @@ export function buildDocumentQuestionPrompt(
     throw new EmptyQuestionError();
   }
 
-  const documents = input.documents.filter((document) => document.rawText.trim().length > 0);
-  if (documents.length === 0) {
+  const chunks = input.chunks.filter((chunk) => chunk.text.trim().length > 0);
+  if (chunks.length === 0) {
     throw new NoProcessedDocumentTextError();
   }
 
-  const context = documents.map(formatDocumentSource).join("\n\n");
-  if (context.length > input.maxContextChars) {
-    throw new DocumentCorpusTooLargeError(context.length, input.maxContextChars);
-  }
+  const context = contextWithinLimit(chunks, input.maxContextChars);
 
   return {
-    sourceCount: documents.length,
+    sourceCount: new Set(chunks.map((chunk) => chunk.uploadRecordId)).size,
     contextCharacters: context.length,
     messages: [
       {
@@ -130,7 +131,7 @@ export function buildDocumentQuestionPrompt(
         role: "user",
         content: [
           `Question:\n${question}`,
-          "Uploaded document text:",
+          "Retrieved uploaded document context:",
           context
         ].join("\n\n")
       }
@@ -143,18 +144,39 @@ export function deepSeekUserIdForTelegramUser(telegramUserId: number): string {
   return `telegram-${digest}`;
 }
 
-function formatDocumentSource(document: ProcessedDocumentText, index: number): string {
-  const sourceTitle = document.originalFileName?.trim() || `message-${document.telegramMessageId}`;
+function contextWithinLimit(chunks: readonly RetrievedDocumentChunk[], maxContextChars: number): string {
+  const sources: string[] = [];
+  let size = 0;
+
+  for (const [index, chunk] of chunks.entries()) {
+    const source = formatRetrievedChunkSource(chunk, index);
+    if (sources.length > 0 && size + source.length + 2 > maxContextChars) {
+      break;
+    }
+
+    if (sources.length === 0 && source.length > maxContextChars) {
+      return source.slice(0, maxContextChars);
+    }
+
+    sources.push(source);
+    size += source.length + 2;
+  }
+
+  return sources.join("\n\n");
+}
+
+function formatRetrievedChunkSource(chunk: RetrievedDocumentChunk, index: number): string {
+  const sourceTitle = chunk.originalFileName?.trim() || `message-${chunk.telegramMessageId}`;
   return [
     `[SOURCE ${index + 1}]`,
-    `Upload ID: ${document.uploadRecordId}`,
+    `Upload ID: ${chunk.uploadRecordId}`,
     `Filename: ${sourceTitle}`,
-    `Telegram chat/message: ${document.telegramChatId}/${document.telegramMessageId}`,
-    document.mimeType ? `MIME type: ${document.mimeType}` : undefined,
-    `Characters: ${document.characterCount}`,
-    `Words: ${document.wordCount}`,
+    `Telegram chat/message: ${chunk.telegramChatId}/${chunk.telegramMessageId}`,
+    typeof chunk.pageNumber === "number" ? `Page: ${chunk.pageNumber}` : undefined,
+    `Block type: ${chunk.blockType}`,
+    `Retrieval score: ${chunk.score.toFixed(4)}`,
     "Text:",
-    document.rawText
+    chunk.text
   ]
     .filter((line): line is string => typeof line === "string")
     .join("\n");

@@ -1,6 +1,6 @@
 # Document Question Answering
 
-Genadiy can answer Telegram questions using raw text extracted from uploaded documents. This v1 mode sends all processed document text for the asking Telegram user to DeepSeek in a single chat completion request. It does not use embeddings, vector search, chunk retrieval, or cached summaries.
+Genadiy can answer Telegram questions using raw text extracted from uploaded documents. The bot retrieves relevant RAG chunks from PostgreSQL/pgvector, sends only those chunks to DeepSeek, and then sends the original source documents used for the answer.
 
 ## Configuration
 
@@ -17,6 +17,8 @@ DEEPSEEK_MAX_OUTPUT_TOKENS=2048
 ```
 
 The bot fails startup with a clear error if `DEEPSEEK_API_KEY` is missing. Worker-only commands can still load configuration without a DeepSeek key.
+
+RAG retrieval also requires embedding provider configuration. See `docs/rag-document-retrieval.md`.
 
 ## Runtime Flow
 
@@ -41,7 +43,7 @@ The bot fails startup with a clear error if `DEEPSEEK_API_KEY` is missing. Worke
    ```
 
 4. Upload a PDF or photo from an allowlisted Telegram user.
-5. Wait for the worker to extract text.
+5. Wait for the worker to extract text and finish RAG indexing.
 6. Ask a question in Telegram as plain text, or use:
 
    ```text
@@ -57,8 +59,8 @@ sudo docker compose exec postgres psql -U telegram -d telegram_documents \
   -c 'select u."telegramUserId", u."originalFileName", d."characterCount", left(d."rawText", 300) from "DocumentText" d join "UploadRecord" u on u.id = d."uploadRecordId" order by d."createdAt" desc limit 5;'
 ```
 
-If the bot replies that no processed text is available, keep the worker running and check worker logs. If the bot says the corpus is too large, increase `DEEPSEEK_MAX_CONTEXT_CHARS` or reduce the amount of processed text for that Telegram user.
+If the bot replies that no indexed context is available, keep the worker running and check worker logs plus `DocumentRagIndexJob`.
 
 ## Privacy
 
-When an authorized user asks a question, Genadiy sends extracted document text to DeepSeek. Do not enable this feature for sensitive documents unless that external API use is acceptable for your deployment. The application does not log full prompts or raw document text during question answering.
+When an authorized user asks a question, Genadiy sends the question to the configured embedding provider and sends retrieved document chunks to DeepSeek for answer generation. With OpenAI embeddings, document chunks and questions leave the local machine; with local Ollama embeddings, the embedding step stays local. Do not enable this feature for sensitive documents unless the configured external API use is acceptable for your deployment. The application does not log full prompts or raw document text during question answering.

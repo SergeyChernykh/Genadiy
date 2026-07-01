@@ -2,9 +2,10 @@ import { Telegraf, type Context } from "telegraf";
 import type { AppConfig } from "./config/env.js";
 import { createProxyAgent } from "./network/proxyAgent.js";
 import { DocumentQuestionAnsweringService } from "./questionAnswering/documentQuestionAnswering.js";
+import type { RagRetriever } from "./rag/retrieval.js";
 import type {
   DeepSeekChatClient,
-  DocumentTextRepository,
+  ObjectDownloader,
   ObjectStorage,
   UploadRecordRepository
 } from "./types.js";
@@ -15,8 +16,9 @@ import { TelegramUploadHandler } from "./telegram/uploadHandler.js";
 
 export interface TelegramBotDependencies {
   storage: ObjectStorage;
+  sourceDownloader: ObjectDownloader;
   records: UploadRecordRepository;
-  documents: DocumentTextRepository;
+  retriever: RagRetriever;
   deepSeek: DeepSeekChatClient;
   logger?: Pick<Console, "error">;
 }
@@ -41,14 +43,27 @@ export function createTelegramBot(
     deps.logger ? { ...handlerDeps, logger: deps.logger } : handlerDeps
   );
   const questionService = new DocumentQuestionAnsweringService({
-    documents: deps.documents,
+    retriever: deps.retriever,
     deepSeek: deps.deepSeek,
     options: {
-      maxContextChars: config.deepSeek.maxContextChars
+      maxContextChars: config.rag.maxContextChars
     }
   });
   const questionHandler = new TelegramQuestionHandler(
-    deps.logger ? { service: questionService, logger: deps.logger } : { service: questionService }
+    deps.logger
+      ? {
+          service: questionService,
+          sourceDownloader: deps.sourceDownloader,
+          maxSourceDocuments: config.rag.maxSourceDocuments,
+          sourceDownloadMaxBytes: config.rag.sourceDownloadMaxBytes,
+          logger: deps.logger
+        }
+      : {
+          service: questionService,
+          sourceDownloader: deps.sourceDownloader,
+          maxSourceDocuments: config.rag.maxSourceDocuments,
+          sourceDownloadMaxBytes: config.rag.sourceDownloadMaxBytes
+        }
   );
   const messageRouter = new TelegramMessageRouter({
     config,

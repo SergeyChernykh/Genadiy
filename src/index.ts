@@ -2,9 +2,15 @@ import { createTelegramBot } from "./bot.js";
 import { loadConfig } from "./config/env.js";
 import { DeepSeekClient, requireDeepSeekConfig } from "./deepseek/client.js";
 import {
+  OpenAiEmbeddingClient,
+  requireOpenAiEmbeddingConfig
+} from "./openai/embeddings.js";
+import {
   createPrismaClient,
   PrismaUploadRecordRepository
 } from "./persistence/uploadRecords.js";
+import { RagRetrievalRepository } from "./rag/persistence.js";
+import { RagRetriever } from "./rag/retrieval.js";
 import { createS3Client, S3ObjectStorage } from "./storage/s3ObjectStorage.js";
 
 async function main(): Promise<void> {
@@ -22,11 +28,28 @@ async function main(): Promise<void> {
   );
   const records = new PrismaUploadRecordRepository(prisma);
   const deepSeek = new DeepSeekClient(requireDeepSeekConfig(config.deepSeek));
+  const embeddings = new OpenAiEmbeddingClient(
+    requireOpenAiEmbeddingConfig(config.openAi, config.openAi.queryPrefix)
+  );
+  const retriever = new RagRetriever({
+    embeddings,
+    repository: new RagRetrievalRepository(prisma),
+    options: {
+      indexVersion: config.rag.indexVersion,
+      embeddingModel: config.openAi.embeddingModel,
+      embeddingDimensions: config.openAi.embeddingDimensions,
+      retrievalLimit: config.rag.retrievalLimit,
+      retrievalCandidateLimit: config.rag.retrievalCandidateLimit,
+      minSimilarity: config.rag.minSimilarity,
+      exactMatchBoost: config.rag.exactMatchBoost
+    }
+  });
 
   const bot = createTelegramBot(config, {
     storage,
+    sourceDownloader: storage,
     records,
-    documents: records,
+    retriever,
     deepSeek,
     logger: console
   });
